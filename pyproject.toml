@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "backupproof"
+version = "0.1.0"
+description = "Prove a backup matches the originals: missing, out-of-date and silently corrupted files (read-only)."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+
+[project.scripts]
+backupproof = "backupproof.cli:main"
+
+[tool.setuptools]
+packages = ["backupproof"]
