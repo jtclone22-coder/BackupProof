@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "backupproof"
-version = "0.1.0"
+version = "0.1.1"
 description = "Prove a backup matches the originals: missing, out-of-date and silently corrupted files (read-only)."
 readme = "README.md"
 license = { text = "MIT" }

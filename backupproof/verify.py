@@ -41,12 +41,16 @@ class Result:
     links_skipped: int = 0
     contents_verified: int = 0
     seconds: float = 0.0
+    stopped: bool = False   # Stop was pressed: the check is incomplete, so it never counts as OK
 
     @property
     def ok(self) -> bool:
-        return not (self.missing or self.outdated or self.differs or self.unreadable)
+        return not (self.stopped or self.missing or self.outdated or self.differs or self.unreadable)
 
     def headline(self) -> str:
+        if self.stopped:
+            return (f"Check stopped before it finished: nothing is confirmed ({self.files_checked:,} files listed, "
+                    f"contents of {self.contents_verified:,} verified so far). Run it again to finish.")
         if self.ok:
             checked = f", contents of {self.contents_verified} files verified" if self.contents_verified else ""
             return f"Backup OK: all {self.files_checked:,} files are present and current{checked}."
@@ -87,10 +91,10 @@ def index(root: str, ignore=DEFAULT_IGNORE, should_stop=None, errors: list | Non
                 if entry.is_symlink() or getattr(info, "st_file_attributes", 0) & REPARSE_POINT:
                     links += 1
                     continue
-                if _ignored(entry.name, ignore):
-                    continue
                 if entry.is_dir(follow_symlinks=False):
-                    stack.append(entry.path)
+                    stack.append(entry.path)  # ignore patterns are for files: a folder called "x.tmp" is still checked
+                elif _ignored(entry.name, ignore):
+                    continue
                 else:
                     relative = os.path.relpath(entry.path, root)
                     found[relative.lower()] = Entry(relative, info.st_size, info.st_mtime)
@@ -132,6 +136,8 @@ def verify(source: str, backup: str, *, mode: str = "quick", sample_percent: flo
     errors: list[str] = []
     src, src_links = index(source, ignore, should_stop, errors)
     dst, dst_links = index(backup, ignore, should_stop, errors)
+    if should_stop and should_stop():  # a listing cut short would make missing files look present (or absent)
+        result.stopped = True
     result.unreadable.extend(errors)
     result.links_skipped = src_links + dst_links
     matching: list[tuple[Entry, Entry]] = []
@@ -155,12 +161,14 @@ def verify(source: str, backup: str, *, mode: str = "quick", sample_percent: flo
             count = max(1, round(len(matching) * sample_percent / 100))
             chosen = random.Random(seed).sample(matching, min(count, len(matching)))
         for done, (a, b) in enumerate(chosen, 1):
-            if should_stop and should_stop():
+            if result.stopped or (should_stop and should_stop()):
+                result.stopped = True
                 break
             try:
                 same = file_hash(os.path.join(source, a.path), should_stop) == \
                     file_hash(os.path.join(backup, b.path), should_stop)
             except InterruptedError:
+                result.stopped = True
                 break
             except OSError as exc:
                 result.unreadable.append(f"{a.path}: {exc.strerror or exc}")

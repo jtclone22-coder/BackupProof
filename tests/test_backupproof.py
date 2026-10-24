@@ -67,6 +67,26 @@ class VerifyTests(Pair):
         self.assertEqual([a.path for a, _ in deep.differs], [os.path.join("docs", "deep", "c.bin")])
         self.assertIn("possible corruption", deep.headline())
 
+    def test_stopping_a_check_never_reports_ok(self) -> None:
+        write(self.dst / "docs/deep/c.bin", b"charliX" + b"charlie" * 99, self.t0)  # corrupted, same size and date
+        calls = {"n": 0}
+
+        def stop_soon() -> bool:
+            calls["n"] += 1
+            return calls["n"] > 3  # Stop pressed once the folders are listed, before the contents are compared
+
+        result = verify(str(self.src), str(self.dst), mode="deep", should_stop=stop_soon)
+        self.assertTrue(result.stopped)
+        self.assertFalse(result.ok)
+        self.assertIn("stopped before it finished", result.headline())
+        listing = verify(str(self.src), str(self.dst), should_stop=lambda: True)  # stopped while listing
+        self.assertFalse(listing.ok)
+
+    def test_ignore_patterns_skip_files_not_folders(self) -> None:
+        write(self.src / "build.tmp" / "keep.txt", b"real work")
+        result = verify(str(self.src), str(self.dst))
+        self.assertEqual([e.path for e in result.missing], [os.path.join("build.tmp", "keep.txt")])
+
     def test_sample_mode_is_reproducible_with_a_seed(self) -> None:
         for index in range(40):
             write(self.src / "many" / f"{index}.txt", str(index).encode(), self.t0)
